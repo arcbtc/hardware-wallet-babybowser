@@ -31,6 +31,7 @@ bool waitBool = true;
 bool psbtCollect = false;
 bool passwordEntered = false;
 bool fileCheck = true;
+bool keepLooping = true;
 
 const int DELAY_MS = 5;
 
@@ -61,66 +62,71 @@ void setup() {
 
 void loop() {
   serialData = "";
+  
   // check files
   fileCheck = true;
   readFile(SPIFFS, "/mn.txt", true);
   readFile(SPIFFS, "/hash.txt", false);
   if (fileCheck == false){
     message("Failed opening files", "Reset or 'wipe'");
-    while(true){
+    keepLooping = true;
+    while(keepLooping){
       if(Serial.available() > 0){
         serialData = Serial.readStringUntil('\n'); 
         if(serialData == "wipe"){
           wipeHww();
-          return false;
+          keepLooping = false;
         }
       }
     }
   }
 
   // check password
+  keepLooping = true;
   while(passwordEntered == false){
     message("Welcome", "Enter password");
-    while(true){
+    while(keepLooping){
       if(Serial.available() > 0){
         serialData = Serial.readStringUntil('\n'); 
-        hashPass(serialData);
-        if(keyHash == fetchedHash){
-          passwordEntered == true;
-          return false;
+        if(serialData == "wipe"){
+          wipeHww();
+          passwordEntered == false;
+          keepLooping = false;
+        }
+        else{
+          hashPass(serialData);
+          if(keyHash == fetchedHash){
+            passwordEntered == true;
+            keepLooping = false;
+          }
+          else{
+            message("Error, try again", "Password failed");
+          }
         }
       }
     }
   }
-  while(true){
-    message("Bwahaha", "Send PSBT, 'seed' or 'reset'");
+
+  // check for commands or psbt
+  keepLooping = true;
+  while(keepLooping){
+    message("Bwahaha", "'seed','wipe', or send PSBT");
     if(Serial.available() > 0){
       serialData = Serial.readStringUntil('\n'); 
-      if(serialData.substring(0,3) == "cHNid"){
+      if(serialData.substring(0,5) == "cHNid"){
         psbtStr = serialData;
         parseSignPsbt();
       }
       if(serialData == "seed"){
-        Serial.print();
+        readFile(SPIFFS, "/mn.txt", true);
+        Serial.print(fetchedEncrytptedSeed);
       }
       if(serialData == "wipe"){
         wipeHww();
-        return false;
+        keepLooping = false;
       }
+    }
   }
-  
-  if(Serial.available() > 0){
-    serialData = Serial.readStringUntil('\n');
-    // Make sure we're not collecting same data
-    if(serialData != oldSerialData){
-      // Check if we need to start collecting psbt chunks
-      if(serialData.substring(0,3) == "cHNid"){
-        psbtStr = serialData;
-        parseSignPsbt();
-      }
-    }  
-  }
-  oldSerialData = serialData;
   delay(DELAY_MS);
 }
 
@@ -204,43 +210,44 @@ void createMn(){
 }
 
 void wipeHww(){
-  waitBool = true;
   message("Resetting...", "");
   delay(2000);
-  message("Enter password", "8 digits and alphanumeric");
-    waitBool = true;
-    while(waitBool){
-      if(Serial.available() > 0){
-        // If we're here, then serial data has been received
-        serialData = Serial.readStringUntil('\n');
-        if (isAlphaNumeric(serialData) == true){
-          waitBool = false;
-        }
+  message("Enter password", "8 numbers/letters");
+  keepLooping = true;
+  while(keepLooping){
+    if(Serial.available() > 0){
+      serialData = Serial.readStringUntil('\n');
+      if (isAlphaNumeric(serialData) == true){
+        deleteFile(SPIFFS, "/mn.txt");
+        deleteFile(SPIFFS, "/hash.txt");
+        createMn();
+        hashPass(serialData);
+        writeFile(SPIFFS, "/mn.txt", mnemonic);
+        writeFile(SPIFFS, "/hash.txt", keyHash);
+        keepLooping = false;
       }
-      delay(DELAY_MS);
+      else{
+        message("Error, try again", "8 numbers/letters");
+      }
     }
-    deleteFile(SPIFFS, "/mn.txt");
-    deleteFile(SPIFFS, "/hash.txt");
-    createMn();
-    hashPass(serialData);
-    writeFile(SPIFFS, "/mn.txt", mnemonic);
-    writeFile(SPIFFS, "/hash.txt", keyHash);
+    delay(DELAY_MS);
+  }
 }
 
 bool isAlphaNumeric(String instr){
-      for(int i = 0; i < instr.length(); i++){
-           if(instr.length() > 7){
-               continue;
-           }
-           if(isalpha(instr[i])){
-               continue;
-           }
-           if(isdigit(instr[i])){
-               continue;
-           }
-           return false;
-      }
-      return true;
+  for(int i = 0; i < instr.length(); i++){
+    if(instr.length() > 7){
+      continue;
+    }
+    if(isalpha(instr[i])){
+      continue;
+    }
+    if(isdigit(instr[i])){
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 //========================================================================//
@@ -256,8 +263,8 @@ void logo(){
   tft.setTextSize(2);
   tft.setCursor(0, 80);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.print("LNbits/ubitcoin wallet");
-  Serial.println("Baby Bowser LNbits/ubitcoin HWW");
+  tft.print("LNbits/ubitcoin HWW");
+  Serial.println("BabyBowser LNbits/ubitcoin HWW");
 }
 
 void message(String message, String additional)
@@ -279,46 +286,44 @@ void message(String message, String additional)
 //========================================================================//
 
 void readFile(fs::FS &fs, const char * path, bool seed){
-
-    Serial.printf("Reading file: %s\r\n", path);
-    File file = fs.open(path);
-    if(!file || file.isDirectory()){
-        Serial.println("- failed to open file for reading");
-        fileCheck = false;
-        return;
+  Serial.printf("Reading file: %s\r\n", path);
+  File file = fs.open(path);
+  if(!file || file.isDirectory()){
+    Serial.println("- failed to open file for reading");
+    fileCheck = false;
+    return;
+  }
+  while(file.available()){
+    if(seed == false){
+      fetchedHash = file.read();
     }
-    while(file.available()){
-      if(seed == false){
-        fetchedHash = file.read();
-      }
-      else{
-        fetchedEncrytptedSeed = file.read();
-      }
+    else{
+      fetchedEncrytptedSeed = file.read();
     }
-    file.close();
+  }
+  file.close();
 }
 
 void writeFile(fs::FS &fs, const char * path, String message){
-    Serial.printf("Writing file: %s\r\n", path);
-
-    File file = fs.open(path, FILE_WRITE);
-    if(!file){
-        Serial.println("- failed to open file for writing");
-        return;
-    }
-    if(file.print(message)){
-        Serial.println("- file written");
-    } else {
-        Serial.println("- write failed");
-    }
-    file.close();
+  Serial.printf("Writing file: %s\r\n", path);
+  File file = fs.open(path, FILE_WRITE);
+  if(!file){
+    Serial.println("- failed to open file for writing");
+    return;
+  }
+  if(file.print(message)){
+  Serial.println("- file written");
+  } else {
+    Serial.println("- write failed");
+  }
+  file.close();
 }
 
 void deleteFile(fs::FS &fs, const char * path){
-    Serial.printf("Deleting file: %s\r\n", path);
-    if(fs.remove(path)){
-        Serial.println("- file deleted");
-    } else {
-        Serial.println("- delete failed");
-    }
+  Serial.printf("Deleting file: %s\r\n", path);
+  if(fs.remove(path)){
+    Serial.println("- file deleted");
+  } else {
+    Serial.println("- delete failed");
+  }
 }
