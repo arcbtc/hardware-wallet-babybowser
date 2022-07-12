@@ -26,6 +26,7 @@ fs::SPIFFSFS &FlashFS = SPIFFS;
 String serialData = "";
 String oldSerialData = "";
 String psbtStr = "";
+String restore = "";
 
 bool waitBool = true;
 bool psbtCollect = false;
@@ -68,7 +69,7 @@ void loop() {
   readFile(SPIFFS, "/mn.txt", true);
   readFile(SPIFFS, "/hash.txt", false);
   if (fileCheck == false){
-    message("Failed opening files", "Reset or 'wipe'");
+    message("Failed opening files", "Reset or 'help'");
     keepLooping = true;
     while(keepLooping){
       if(Serial.available() > 0){
@@ -76,6 +77,18 @@ void loop() {
         if(serialData == "wipe"){
           wipeHww();
           keepLooping = false;
+        }
+        if(serialData == "help"){
+          help();
+          keepLooping = false;
+        }
+        if(serialData.substring(0,7) == "restore"){
+          message("Enter seed", "Seperated by spaces");
+          if(Serial.available() > 0){
+            serialData = Serial.readStringUntil('\n'); 
+            restore = serialData;
+            keepLooping = false;
+          }
         }
       }
     }
@@ -91,6 +104,10 @@ void loop() {
         if(serialData == "wipe"){
           wipeHww();
           passwordEntered == false;
+          keepLooping = false;
+        }
+        if(serialData == "help"){
+          help();
           keepLooping = false;
         }
         else{
@@ -133,6 +150,35 @@ void loop() {
 //========================================================================//
 //================================HELPERS=================================//
 //========================================================================//
+
+void wipeHww(){
+  message("Resetting...", "");
+  delay(2000);
+  message("Enter password", "8 numbers/letters");
+  keepLooping = true;
+  while(keepLooping){
+    if(Serial.available() > 0){
+      serialData = Serial.readStringUntil('\n');
+      if (isAlphaNumeric(serialData) == true){
+        deleteFile(SPIFFS, "/mn.txt");
+        deleteFile(SPIFFS, "/hash.txt");
+        createMn();
+        hashPass(serialData);
+        Serial.println(mnemonic);
+        Serial.println(keyHash);
+        writeFile(SPIFFS, "/mn.txt", mnemonic);
+        writeFile(SPIFFS, "/hash.txt", keyHash);
+        keepLooping = false;
+        passwordEntered = false;
+      }
+      else{
+        message("Error, try again", "8 numbers/letters");
+      }
+    }
+    delay(DELAY_MS);
+  }
+}
+
 
 void parseSignPsbt(){
   HDPrivateKey hd(mnemonic, password);
@@ -200,38 +246,39 @@ void hashPass(String key){
 }
 
 void createMn(){
-  // entropy bytes to mnemonic
-  uint8_t arr[] = {'1','1','1','1','1','1','1','1','1','1','1','1','1','1','1','1'};
-  String mn = mnemonicFromEntropy(arr, sizeof(arr));
-  Serial.println(mn);
-  uint8_t out[16];
-  size_t len = mnemonicToEntropy(mn, out, sizeof(out));
-  mnemonic = toHex(out, len);
+  if(restore != ""){
+    // be nice to add a check here
+    mnemonic = restore;
+  }
+  else{
+    // entropy bytes to mnemonic
+    uint8_t arr[] = {'1','1','1','1','1','1','1','1','1','1','1','1','1','1','1','1'};
+    String mn = mnemonicFromEntropy(arr, sizeof(arr));
+    Serial.println(mn);
+    uint8_t out[16];
+    size_t len = mnemonicToEntropy(mn, out, sizeof(out));
+    mnemonic = toHex(out, len);
+  }
 }
 
-void wipeHww(){
-  message("Resetting...", "");
-  delay(2000);
-  message("Enter password", "8 numbers/letters");
-  keepLooping = true;
-  while(keepLooping){
-    if(Serial.available() > 0){
-      serialData = Serial.readStringUntil('\n');
-      if (isAlphaNumeric(serialData) == true){
-        deleteFile(SPIFFS, "/mn.txt");
-        deleteFile(SPIFFS, "/hash.txt");
-        createMn();
-        hashPass(serialData);
-        writeFile(SPIFFS, "/mn.txt", mnemonic);
-        writeFile(SPIFFS, "/hash.txt", keyHash);
-        keepLooping = false;
-      }
-      else{
-        message("Error, try again", "8 numbers/letters");
-      }
+
+String getValue(String data, char separator, int index)
+{
+  int found = 0;
+  int strIndex[] = {0, -1};
+  const int maxIndex = data.length() - 1;
+
+  for (int i = 0; i <= maxIndex && found <= index; i++)
+  {
+    if (data.charAt(i) == separator || i == maxIndex)
+    {
+      found++;
+      strIndex[0] = strIndex[1] + 1;
+      strIndex[1] = (i == maxIndex) ? i + 1 : i;
     }
-    delay(DELAY_MS);
   }
+
+  return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
 bool isAlphaNumeric(String instr){
@@ -279,6 +326,29 @@ void message(String message, String additional)
   tft.println(additional);
   Serial.println(message);
   Serial.println(additional);
+}
+
+void help()
+{
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(0, 0);
+  tft.println("BabyBowser Commands");
+  tft.setCursor(0, 20);
+  tft.setTextSize(1);
+  tft.println("'wipe' will completely wipe device and creat a new wallet");
+  tft.println("'restore <BIP39 seed words seperated by space>' will restore from seed");
+  tft.println("'seed' will send seed to serial output");
+  tft.println("'cHNid...' Will parse valid psbt");
+  tft.println("'sign' Will sign valid psbt");
+  Serial.println("BabyBowser Commands");
+  Serial.println("'wipe' will completely wipe device and creat a new wallet");
+  Serial.println("'restore <BIP39 seed words seperated by space>' will restore from seed");
+  Serial.println("'seed' will send seed to serial output");
+  Serial.println("'cHNid...' Will parse valid psbt");
+  Serial.println("'sign' Will sign valid psbt");
+  delay(10000);
 }
 
 //========================================================================//
