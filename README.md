@@ -2,7 +2,7 @@
 # BabyBowser 
 ## ESP32 Bitcoin Hardware Wallet (powered by uBitcoin)
 
-This very cheap off the shelf hardware wallet is designed to work with Lilygos Tdisplay, but you can easily make work with any ESP32.
+This very cheap off the shelf hardware wallet is designed to work with Lilygos <a href="https://www.aliexpress.com/item/33048962331.html">Tdisplay</a>, but you can easily make work with any ESP32.
 
 ## Build instructions
 
