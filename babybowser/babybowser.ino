@@ -2,12 +2,11 @@
  * Very cheap little bitcoin HWW for use with lilygo TDisplay
  * although with little tinkering any ESP32 will work
  *
+ * Join us!
  * https://t.me/lnbits
  * https://t.me/makerbits
  * 
  */
-
-// #include <SPI.h> // Comment out when using i2c
 
 #include <FS.h>
 #include <SPIFFS.h>
@@ -17,11 +16,19 @@
 #include <Hash.h>
 #include <ArduinoJson.h>
 #include "Bitcoin.h"
+#include "PSBT.h"
 
+#include <FS.h>
+#include <SPIFFS.h>
+fs::SPIFFSFS &FlashFS = SPIFFS;
+#define FORMAT_ON_FAIL true
 
-String rcvdSerialData = "";
-String masterPubKey = "";
-bool masterPubKeyCollect = false;
+String serialData = "";
+String oldSerialData = "";
+String psbtStr = "";
+
+bool waitBool = true;
+bool psbtCollect = false;
 bool passwordEntered = false;
 bool fileCheck = true;
 
@@ -34,6 +41,7 @@ String mnemonic = "";
 String password = "";
 String fetchedEncrytptedSeed = "";
 String fetchedHash = "";
+String keyHash = "";
 
 PSBT psbt;
 
@@ -54,50 +62,50 @@ void setup() {
 void loop() {
   fileCheck = true;
   readFile(SPIFFS, "/mn.txt", true);
-  readFile(SPIFFS, "/hash.txt");
+  readFile(SPIFFS, "/hash.txt", false);
   if (fileCheck == false){
     error("Failed opening files", "Try again or send 'reset'");
   }
-  rcvdSerialData = "";
+  serialData = "";
   // Check to see if there is any incoming serial data
   if(Serial.available() > 0){
     // If we're here, then serial data has been received
-    rcvdSerialData = Serial.readStringUntil('\n'); 
+    serialData = Serial.readStringUntil('\n'); 
   }
-  if(rcvdSerialData == "reset"){
+  if(serialData == "reset"){
     resetHww();
   }
   // Make sure we're not collecting same data
-  if(rcvdSerialData != oldRcvdSerialData){
+  if(serialData != oldSerialData){
     if(passwordEntered == false){
-      hashPass(rcvdSerialData)
+      hashPass(serialData);
       if(keyHash == fetchedHash){
         passwordEntered == true;
       }
     }
     else{
       // Check if we are currently collecting psbt chunks
-      if(masterPsbtCollect == true){
-        masterPubKey = masterPubKey + rcvdSerialData;
+      if(psbtCollect == true){
+        psbtStr = psbtStr + serialData;
       }
       // Check if we need to start collecting psbt
-      if(rcvdSerialData.substring(0,3) == "cHNid"){
-        masterPubKey = rcvdSerialData;
-        masterPsbtCollect = true;
+      if(serialData.substring(0,3) == "cHNid"){
+        psbtStr = serialData;
+        psbtCollect = true;
       }
-      if(rcvdSerialData == "clear" && masterPubKeyCollect == true){
+      if(serialData == "clear" && psbtCollect == true){
         // Check, decode, sign, and send back psbt
         parseSignPsbt();
-        masterPubKeyCollect = false;
+        psbtCollect = false;
       }
       // Clear psbt
-      if(rcvdSerialData == "clear" && masterPubKeyCollect == false){
-        masterPubKey = "";
+      if(serialData == "clear" && psbtCollect == false){
+        psbtStr = "";
       }
     }
     
   }
-  oldRcvdSerialData = rcvdSerialData;
+  oldSerialData = serialData;
   delay(DELAY_MS);
 }
 
@@ -106,7 +114,8 @@ void loop() {
 //========================================================================//
 
 void parseSignPsbt(){
-  psbt.parseBase64(masterPubKey);
+  HDPrivateKey hd(mnemonic, password);
+  psbt.parseBase64(psbtStr);
   // check parsing is ok
   if(!psbt){
     error("Failed parsing transaction", "Try sending again");
@@ -140,14 +149,13 @@ void parseSignPsbt(){
 
   //wait for confirm
   bool waitToConfirm = true;
-  serial.println("Write 'sign' to sign the psbt");
+  error("Pass 'sign' to sign the psbt", "");
   while(waitToConfirm){
     if(Serial.available() > 0){
       // If we're here, then serial data has been received
-      rcvdSerialData = Serial.readStringUntil('\n'); 
+      serialData = Serial.readStringUntil('\n'); 
     }
-    if(rcvdSerialData == "sign"){
-      HDPrivateKey hd(mnemonic, password);
+    if(serialData == "sign"){
       if(!hd){ // check if it is valid
         Serial.println("Invalid xpub");
         waitToConfirm = false;
@@ -155,7 +163,7 @@ void parseSignPsbt(){
       }
       else{
         psbt.sign(hd);
-        serial.println(psbt.toBase64()); // now you can combine and finalize PSBTs in Bitcoin Core
+        Serial.println(psbt.toBase64()); // now you can combine and finalize PSBTs in Bitcoin Core
         waitToConfirm = false;
       }
     }
@@ -164,12 +172,19 @@ void parseSignPsbt(){
 }
 
 void hashPass(String key){
+  byte payload[sizeof(password)];
+  for (int i = 0; i <= sizeof(password); i++) {
+    payload[i] = password[i];
+  }
   uint8_t hmacresult[32];
   SHA256 h;
-  h.beginHMAC(key, keylen);
+  h.beginHMAC(payload, sizeof(password));
   h.write((uint8_t *) "qwertyuiopasd", 13);
   h.endHMAC(hmacresult);
-  keyHash = hmacresult;
+  for (int i = 0; i < sizeof(password); i++)
+  {
+    keyHash[i] = payload[i] ^ hmacresult[i];
+  }
 }
 
 void createMn(){
@@ -183,6 +198,7 @@ void createMn(){
 }
 
 void resetHww(){
+  waitBool = true;
   error("Resetting...", "");
   delay(2000);
   error("Enter password", "Must be 8 digits and alphanumeric");
@@ -190,8 +206,8 @@ void resetHww(){
     while(waitBool){
       if(Serial.available() > 0){
         // If we're here, then serial data has been received
-        rcvdSerialData = Serial.readStringUntil('\n');
-        if (isAlphaNumeric(rcvdSerialData) == true){
+        serialData = Serial.readStringUntil('\n');
+        if (isAlphaNumeric(serialData) == true){
           waitBool = false;
         }
       }
@@ -200,13 +216,13 @@ void resetHww(){
     deleteFile(SPIFFS, "/mn.txt");
     deleteFile(SPIFFS, "/hash.txt");
     createMn();
-    hashPass(rcvdSerialData);
+    hashPass(serialData);
     writeFile(SPIFFS, "/mn.txt", mnemonic);
     writeFile(SPIFFS, "/hash.txt", keyHash);
 }
 
 bool isAlphaNumeric(String instr){
-      for(int i = 0; i < strlen(instr); i++){
+      for(int i = 0; i < instr.length(); i++){
            if(instr.length() > 7){
                continue;
            }
@@ -235,7 +251,7 @@ void logo(){
   tft.setCursor(0, 80);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.print("LNbits/ubitcoin wallet");
-  serial.println("Baby Bowser LNbits/ubitcoin wallet");
+  Serial.println("Baby Bowser LNbits/ubitcoin wallet");
 }
 
 void error(String message, String additional)
@@ -249,15 +265,15 @@ void error(String message, String additional)
   tft.setCursor(0, 120);
   tft.setTextSize(2);
   tft.println(additional);
-  serial.println(message);
-  serial.println(additional);
+  Serial.println(message);
+  Serial.println(additional);
 }
 
 //========================================================================//
 //=============================SPIFFS STUFF===============================//
 //========================================================================//
 
-void readFile(fs::FS &fs, const char * path, bool seed = false){
+void readFile(fs::FS &fs, const char * path, bool seed){
 
     Serial.printf("Reading file: %s\r\n", path);
     File file = fs.open(path);
@@ -267,17 +283,17 @@ void readFile(fs::FS &fs, const char * path, bool seed = false){
         return;
     }
     while(file.available()){
-      if(seed == true){
-        fetchedEncrytptedSeed = file.read();
+      if(seed == false){
+        fetchedHash = file.read();
       }
       else{
-        fetchedHash = file.read();
+        fetchedEncrytptedSeed = file.read();
       }
     }
     file.close();
 }
 
-void writeFile(fs::FS &fs, const char * path, const char * message){
+void writeFile(fs::FS &fs, const char * path, String message){
     Serial.printf("Writing file: %s\r\n", path);
 
     File file = fs.open(path, FILE_WRITE);
