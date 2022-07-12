@@ -53,57 +53,72 @@ void setup() {
   tft.setRotation(1);
   tft.invertDisplay(true);
   logo();
-
+  delay(3000);
   h.begin();
   FlashFS.begin(FORMAT_ON_FAIL);
   SPIFFS.begin(true);
 }
 
 void loop() {
+  serialData = "";
+  // check files
   fileCheck = true;
   readFile(SPIFFS, "/mn.txt", true);
   readFile(SPIFFS, "/hash.txt", false);
   if (fileCheck == false){
-    error("Failed opening files", "Try again or send 'reset'");
-  }
-  serialData = "";
-  // Check to see if there is any incoming serial data
-  if(Serial.available() > 0){
-    // If we're here, then serial data has been received
-    serialData = Serial.readStringUntil('\n'); 
-  }
-  if(serialData == "reset"){
-    resetHww();
-  }
-  // Make sure we're not collecting same data
-  if(serialData != oldSerialData){
-    if(passwordEntered == false){
-      hashPass(serialData);
-      if(keyHash == fetchedHash){
-        passwordEntered == true;
+    message("Failed opening files", "Reset or 'wipe'");
+    while(true){
+      if(Serial.available() > 0){
+        serialData = Serial.readStringUntil('\n'); 
+        if(serialData == "wipe"){
+          wipeHww();
+          return false;
+        }
       }
     }
-    else{
-      // Check if we are currently collecting psbt chunks
-      if(psbtCollect == true){
-        psbtStr = psbtStr + serialData;
+  }
+
+  // check password
+  while(passwordEntered == false){
+    message("Welcome", "Enter password");
+    while(true){
+      if(Serial.available() > 0){
+        serialData = Serial.readStringUntil('\n'); 
+        hashPass(serialData);
+        if(keyHash == fetchedHash){
+          passwordEntered == true;
+          return false;
+        }
       }
-      // Check if we need to start collecting psbt
+    }
+  }
+  while(true){
+    message("Bwahaha", "Send PSBT, 'seed' or 'reset'");
+    if(Serial.available() > 0){
+      serialData = Serial.readStringUntil('\n'); 
       if(serialData.substring(0,3) == "cHNid"){
         psbtStr = serialData;
-        psbtCollect = true;
-      }
-      if(serialData == "clear" && psbtCollect == true){
-        // Check, decode, sign, and send back psbt
         parseSignPsbt();
-        psbtCollect = false;
       }
-      // Clear psbt
-      if(serialData == "clear" && psbtCollect == false){
-        psbtStr = "";
+      if(serialData == "seed"){
+        Serial.print();
       }
-    }
-    
+      if(serialData == "wipe"){
+        wipeHww();
+        return false;
+      }
+  }
+  
+  if(Serial.available() > 0){
+    serialData = Serial.readStringUntil('\n');
+    // Make sure we're not collecting same data
+    if(serialData != oldSerialData){
+      // Check if we need to start collecting psbt chunks
+      if(serialData.substring(0,3) == "cHNid"){
+        psbtStr = serialData;
+        parseSignPsbt();
+      }
+    }  
   }
   oldSerialData = serialData;
   delay(DELAY_MS);
@@ -118,7 +133,7 @@ void parseSignPsbt(){
   psbt.parseBase64(psbtStr);
   // check parsing is ok
   if(!psbt){
-    error("Failed parsing transaction", "Try sending again");
+    message("Failed parsing", "Send PSBT again");
     return;
   }
   tft.fillScreen(TFT_BLACK);
@@ -149,7 +164,7 @@ void parseSignPsbt(){
 
   //wait for confirm
   bool waitToConfirm = true;
-  error("Pass 'sign' to sign the psbt", "");
+  message("Pass 'sign' to sign the psbt", "");
   while(waitToConfirm){
     if(Serial.available() > 0){
       // If we're here, then serial data has been received
@@ -172,19 +187,10 @@ void parseSignPsbt(){
 }
 
 void hashPass(String key){
-  byte payload[sizeof(password)];
-  for (int i = 0; i <= sizeof(password); i++) {
-    payload[i] = password[i];
-  }
-  uint8_t hmacresult[32];
-  SHA256 h;
-  h.beginHMAC(payload, sizeof(password));
-  h.write((uint8_t *) "qwertyuiopasd", 13);
-  h.endHMAC(hmacresult);
-  for (int i = 0; i < sizeof(password); i++)
-  {
-    keyHash[i] = payload[i] ^ hmacresult[i];
-  }
+  byte hash[64] = { 0 }; 
+  int hashLen = 0;
+  hashLen = sha256(key, hash);
+  keyHash = toHex(hash, hashLen);
 }
 
 void createMn(){
@@ -197,11 +203,11 @@ void createMn(){
   mnemonic = toHex(out, len);
 }
 
-void resetHww(){
+void wipeHww(){
   waitBool = true;
-  error("Resetting...", "");
+  message("Resetting...", "");
   delay(2000);
-  error("Enter password", "Must be 8 digits and alphanumeric");
+  message("Enter password", "8 digits and alphanumeric");
     waitBool = true;
     while(waitBool){
       if(Serial.available() > 0){
@@ -251,18 +257,17 @@ void logo(){
   tft.setCursor(0, 80);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.print("LNbits/ubitcoin wallet");
-  Serial.println("Baby Bowser LNbits/ubitcoin wallet");
+  Serial.println("Baby Bowser LNbits/ubitcoin HWW");
 }
 
-void error(String message, String additional)
+void message(String message, String additional)
 {
   tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_RED, TFT_BLACK);
-  tft.setTextSize(3);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextSize(2);
   tft.setCursor(0, 30);
   tft.println(message);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setCursor(0, 120);
+  tft.setCursor(0, 80);
   tft.setTextSize(2);
   tft.println(additional);
   Serial.println(message);
