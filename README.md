@@ -1,3 +1,3 @@
-![image](https://user-images.githubusercontent.com/33088785/178447039-169284f1-92ac-4ef9-a39d-9e7a480e81b0.png)
-# BabyBowser
+![image](https://user-images.githubusercontent.com/33088785/178449323-e2bd30e2-9c2a-4704-90ab-79d55a4187e6.png)
+# BabyBowser, ESP32 Hardware Wallet
 ## LNbits/ubitcoin powered very cheap DIY hardware wallet
