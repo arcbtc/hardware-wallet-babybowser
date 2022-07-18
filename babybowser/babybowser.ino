@@ -93,86 +93,121 @@ void loop() {
     commandData = serialData.substring(spacePos + 1, serialData.length());
   }
 
-
-  if (command == COMMAND_HELP) {
-    help();
-  } else if (command == COMMAND_WIPE) {
-    showMessage("Resetting...", "");
-    delay(2000);
-
-    if (commandData == "") {
-      showMessage("Enter new password", "8 numbers/letters");
-      commandData = awaitSerialData();
-    }
-
-    authenticated = wipeHww(commandData);
-    if (authenticated == true) {
-      message = "Successfully wiped!";
-      subMessage = "Every new beginning comes from some other beginning's end.";
-    } else {
-      message = "Error, try again";
-      subMessage = "8 numbers/letters";
-    }
-  } else if (command == COMMAND_PASSWORD) {
-    if (commandData == "") {
-      showMessage("Enter password", "8 numbers/letters");
-      commandData = awaitSerialData();
-    }
-    String passwordHash = hashPassword(commandData);
-    if (passwordHash == keyHash) {
-      authenticated = true;
-      message = "Password correct!";
-      subMessage = "Ready to sign sir!";
-    } else {
-      authenticated = false;
-      message = "Wrong password, try again";
-      subMessage = "8 numbers/letters";
-    }
-  } else if (command == COMMAND_SEED) {
-    if (authenticated == false) {
-      message = "Enter password!";
-      subMessage = "8 numbers/letters";
-    } else {
-      message = "";
-      subMessage = "";
-      printMnemonic(fetchedEncrytptedSeed);
-    }
-  } else if (command == COMMAND_SIGN_PSBT) {
-    if (authenticated == false) {
-      message = "Enter password!";
-      subMessage = "8 numbers/letters";
-    } else {
-    }
-
-  } else if (command == COMMAND_RESTORE) {
-    if (commandData == "") {
-      showMessage("Enter seed words", "Separated by spaces");
-      commandData = awaitSerialData();
-    }
-    int size = getMnemonicBytes(commandData);
-    if (size == 0) {
-      message = "Wrong word count!";
-      subMessage = "Must be 12, 15, 18, 21 or 24";
-    } else {
-      uint8_t out[size];
-      size_t len = mnemonicToEntropy(commandData, out, sizeof(out));
-      String mn = mnemonicFromEntropy(out, sizeof(out));
-      deleteFile(SPIFFS, "/mn.txt");
-      writeFile(SPIFFS, "/mn.txt", mn);
-      printMnemonic(mn);
-
-      message = "Restore successfull";
-      subMessage = "Use `/seed` to view word list";
-
-    }
-  } else {
-    message = "Unknonw command";
-    subMessage = "Use `/help` for details";
-  }
+  executeCommand(command, commandData);
 
   delay(DELAY_MS);
 }
 
+
+//========================================================================//
+//================================COMMANDS================================//
+//========================================================================//
+
+void executeCommand(String command, String commandData) {
+  if (command == COMMAND_HELP) {
+    executeHelp(commandData);
+  } else if (command == COMMAND_WIPE) {
+    executeWipeHww(commandData);
+  } else if (command == COMMAND_PASSWORD) {
+    executePasswordCheck(commandData);
+  } else if (command == COMMAND_SEED) {
+    executeShowSeed(commandData);
+  } else if (command == COMMAND_SIGN_PSBT) {
+    executeSignPsbt(commandData);
+  } else if (command == COMMAND_RESTORE) {
+    executeRestore(commandData);
+  } else {
+    executeUnknown(commandData);
+  }
+}
+
+void executeHelp(String commandData) {
+  help();
+}
+
+void executePasswordCheck(String commandData) {
+  if (commandData == "") {
+    showMessage("Enter password", "8 numbers/letters");
+    commandData = awaitSerialData();
+  }
+  String passwordHash = hashPassword(commandData);
+  if (passwordHash == keyHash) {
+    authenticated = true;
+    message = "Password correct!";
+    subMessage = "Ready to sign sir!";
+  } else {
+    authenticated = false;
+    message = "Wrong password, try again";
+    subMessage = "8 numbers/letters";
+  }
+}
+
+void executeWipeHww(String commandData) {
+  showMessage("Resetting...", "");
+  delay(2000);
+
+  if (commandData == "") {
+    showMessage("Enter new password", "8 numbers/letters");
+    commandData = awaitSerialData();
+  }
+
+  authenticated = wipeHww(commandData);
+  if (authenticated == true) {
+    message = "Successfully wiped!";
+    subMessage = "Every new beginning comes from some other beginning's end.";
+  } else {
+    message = "Error, try again";
+    subMessage = "8 numbers/letters";
+  }
+}
+
+void executeShowSeed(String commandData) {
+  if (authenticated == false) {
+    message = "Enter password!";
+    subMessage = "8 numbers/letters";
+  } else {
+    message = "";
+    subMessage = "";
+    printMnemonic(fetchedEncrytptedSeed);
+  }
+}
+
+void executeRestore(String commandData) {
+  if (commandData == "") {
+    showMessage("Enter seed words", "Separated by spaces");
+    commandData = awaitSerialData();
+  }
+  int size = getMnemonicBytes(commandData);
+  if (size == 0) {
+    message = "Wrong word count!";
+    subMessage = "Must be 12, 15, 18, 21 or 24";
+  } else {
+    uint8_t out[size];
+    size_t len = mnemonicToEntropy(commandData, out, sizeof(out));
+    String mn = mnemonicFromEntropy(out, sizeof(out));
+    deleteFile(SPIFFS, "/mn.txt");
+    writeFile(SPIFFS, "/mn.txt", mn);
+    printMnemonic(mn);
+
+    message = "Restore successfull";
+    subMessage = "Use `/seed` to view word list";
+  }
+}
+
+void executeSignPsbt(String commandData) {
+  if (authenticated == false) {
+    message = "Enter password!";
+    subMessage = "8 numbers/letters";
+  } else {
+    message = "PSBT";
+    subMessage = commandData;
+  }
+}
+
+void executeUnknown(String commandData) {
+  message = "Unknonw command";
+  subMessage = "Use `/help` for details";
+}
 //========================================================================//
 //================================HELPERS=================================//
 //========================================================================//
