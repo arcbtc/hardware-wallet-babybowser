@@ -68,7 +68,7 @@ void setup() {
   SPIFFS.begin(true);
 }
 
-bool hasPassword = false;
+bool authenticated = false;
 String command = "";
 String commandData = "";
 
@@ -103,14 +103,35 @@ void loop() {
       commandData = awaitSerialData();
     }
 
-    hasPassword = wipeHww(commandData);
-    if (hasPassword == true) {
+    authenticated = wipeHww(commandData);
+    if (authenticated == true) {
       message = "Successfully wiped!";
       subMessage = "Every new beginning comes from some other beginning's end.";
     } else {
       message = "Error, try again";
       subMessage = "8 numbers/letters";
     }
+  } else if (command == COMMAND_PASSWORD) {
+    if (commandData == "") {
+      showMessage("Enter password", "8 numbers/letters");
+      commandData = awaitSerialData();
+    }
+    String passwordHash = hashPassword(commandData);
+    if (passwordHash == keyHash) {
+      authenticated = true;
+      message = "Password correct!";
+      subMessage = "Ready to sign sir!";
+    } else {
+      authenticated = false;
+      message = "Wrong password, try again";
+      subMessage = "8 numbers/letters";
+    }
+  } else if (command == COMMAND_SEED) {
+
+  } else if (command == COMMAND_SIGN_PSBT) {
+
+  } else if (command == COMMAND_RESTORE) {
+
   }
 
   delay(DELAY_MS);
@@ -134,14 +155,13 @@ bool checkFiles() {
 }
 
 bool wipeHww(String password) {
-  showMessage("my password:", password);
   if (isAlphaNumeric(password) == false)
     return false;
 
   deleteFile(SPIFFS, "/mn.txt");
   deleteFile(SPIFFS, "/hash.txt");
   createMn();
-  hashPassword(password);
+  keyHash = hashPassword(password); // todo: rename var
   Serial.println(mnemonic);
   Serial.println(keyHash);
   writeFile(SPIFFS, "/mn.txt", mnemonic);
@@ -211,11 +231,11 @@ void parseSignPsbt() {
   }
 }
 
-void hashPassword(String key) {
+String hashPassword(String key) {
   byte hash[64] = { 0 };
   int hashLen = 0;
   hashLen = sha256(key, hash);
-  keyHash = toHex(hash, hashLen);
+  return toHex(hash, hashLen);
 }
 
 void createMn() {
