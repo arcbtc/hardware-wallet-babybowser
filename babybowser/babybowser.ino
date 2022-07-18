@@ -81,7 +81,9 @@ void loop() {
     subMessage = "Reset or 'help'";
   }
 
-  showMessage(message, subMessage);
+  if (message != "" || subMessage != "")
+    showMessage(message, subMessage);
+
   serialData = awaitSerialData();
   int spacePos = serialData.indexOf(" ");
   command = serialData.substring(0, spacePos);
@@ -99,7 +101,7 @@ void loop() {
     delay(2000);
 
     if (commandData == "") {
-      showMessage("Enter password", "8 numbers/letters");
+      showMessage("Enter new password", "8 numbers/letters");
       commandData = awaitSerialData();
     }
 
@@ -127,11 +129,45 @@ void loop() {
       subMessage = "8 numbers/letters";
     }
   } else if (command == COMMAND_SEED) {
-
+    if (authenticated == false) {
+      message = "Enter password!";
+      subMessage = "8 numbers/letters";
+    } else {
+      message = "";
+      subMessage = "";
+      printMnemonic(fetchedEncrytptedSeed);
+    }
   } else if (command == COMMAND_SIGN_PSBT) {
+    if (authenticated == false) {
+      message = "Enter password!";
+      subMessage = "8 numbers/letters";
+    } else {
+    }
 
   } else if (command == COMMAND_RESTORE) {
+    if (commandData == "") {
+      showMessage("Enter seed words", "Separated by spaces");
+      commandData = awaitSerialData();
+    }
+    int size = getMnemonicBytes(commandData);
+    if (size == 0) {
+      message = "Wrong word count!";
+      subMessage = "Must be 12, 15, 18, 21 or 24";
+    } else {
+      uint8_t out[size];
+      size_t len = mnemonicToEntropy(commandData, out, sizeof(out));
+      String mn = mnemonicFromEntropy(out, sizeof(out));
+      deleteFile(SPIFFS, "/mn.txt");
+      writeFile(SPIFFS, "/mn.txt", mn);
+      printMnemonic(mn);
 
+      message = "Restore successfull";
+      subMessage = "Use `/seed` to view word list";
+
+    }
+  } else {
+    message = "Unknonw command";
+    subMessage = "Use `/help` for details";
   }
 
   delay(DELAY_MS);
@@ -154,6 +190,32 @@ bool checkFiles() {
   return readFile(SPIFFS, "/hash.txt", false);
 }
 
+int getMnemonicBytes(String menmonicSentence) {
+  int wc = wordCount(menmonicSentence);
+  switch (wc)
+  {
+    case 12:
+      return 16;
+    case 15:
+      return 20;
+    case 18:
+      return 24;
+    case 21:
+      return 28;
+    case 24:
+      return 32;
+    default:
+      return 0;
+  }
+}
+
+int wordCount(String s) {
+  int count = 1;
+  for (int i = 0; i < s.length(); i++)
+    if (s[i] == ' ') count++;
+  return count;
+}
+
 bool wipeHww(String password) {
   if (isAlphaNumeric(password) == false)
     return false;
@@ -162,8 +224,8 @@ bool wipeHww(String password) {
   deleteFile(SPIFFS, "/hash.txt");
   createMn();
   keyHash = hashPassword(password); // todo: rename var
-  Serial.println(mnemonic);
-  Serial.println(keyHash);
+  Serial.println("wipeHww mnemonic: " + mnemonic);
+  Serial.println("wipeHww keyHash: " + keyHash);
   writeFile(SPIFFS, "/mn.txt", mnemonic);
   writeFile(SPIFFS, "/hash.txt", keyHash);
 
@@ -247,7 +309,7 @@ void createMn() {
     // entropy bytes to mnemonic
     uint8_t arr[] = {'1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'};
     String mn = mnemonicFromEntropy(arr, sizeof(arr));
-    Serial.println(mn);
+    Serial.println("mnemonicFromEntropy: " + mn);
     uint8_t out[16];
     size_t len = mnemonicToEntropy(mn, out, sizeof(out));
     mnemonic = toHex(out, len);
@@ -344,6 +406,18 @@ void help()
   delay(10000);
 }
 
+void printMnemonic(String mn) {
+  Serial.println("printMnemonic mn: " + mn);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(0, 0);
+  tft.println("Word list:");
+  tft.setCursor(0, 20);
+  tft.setTextSize(1);
+  tft.println(mn);
+}
+
 //========================================================================//
 //=============================SPIFFS STUFF===============================//
 //========================================================================//
@@ -355,12 +429,19 @@ bool readFile(fs::FS &fs, const char * path, bool seed) {
     Serial.println("- failed to open file for reading");
     return false;
   }
+
+  if (seed == false) {
+    fetchedHash = "";
+  }
+  else {
+    fetchedEncrytptedSeed = "";
+  }
   while (file.available()) {
     if (seed == false) {
-      fetchedHash = file.read();
+      fetchedHash += (char)file.read();
     }
     else {
-      fetchedEncrytptedSeed = file.read();
+      fetchedEncrytptedSeed += (char)file.read();
     }
   }
   file.close();
@@ -369,6 +450,7 @@ bool readFile(fs::FS &fs, const char * path, bool seed) {
 
 void writeFile(fs::FS &fs, const char * path, String message) {
   Serial.printf("Writing file: %s\r\n", path);
+  Serial.println("writeFile message: " + message);
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
     Serial.println("- failed to open file for writing");
