@@ -1,12 +1,12 @@
 /**
- * Very cheap little bitcoin HWW for use with lilygo TDisplay
- * although with little tinkering any ESP32 will work
- *
- * Join us!
- * https://t.me/lnbits
- * https://t.me/makerbits
- * 
- */
+   Very cheap little bitcoin HWW for use with lilygo TDisplay
+   although with little tinkering any ESP32 will work
+
+   Join us!
+   https://t.me/lnbits
+   https://t.me/makerbits
+
+*/
 
 #include <FS.h>
 #include <SPIFFS.h>
@@ -46,11 +46,18 @@ String fetchedHash = "";
 String keyHash = "";
 
 PSBT psbt;
+const String COMMAND_RESTORE = "/restore";
+const String COMMAND_WIPE = "/wipe";
+const String COMMAND_PASSWORD = "/password";
+const String COMMAND_SEED = "/seed";
+const String COMMAND_SIGN_PSBT = "/sign";
+const String COMMAND_HELP = "/help";
+
 
 void setup() {
   Serial.begin(9600);
 
-    // load screen
+  // load screen
   tft.init();
   tft.setRotation(1);
   tft.invertDisplay(true);
@@ -61,89 +68,51 @@ void setup() {
   SPIFFS.begin(true);
 }
 
+bool hasPassword = false;
+String command = "";
+String commandData = "";
+
+String message = "Welcome";
+String subMessage = "Enter password";
+
 void loop() {
-  serialData = "";
-  
-  // check files
-  fileCheck = true;
-  readFile(SPIFFS, "/mn.txt", true);
-  readFile(SPIFFS, "/hash.txt", false);
-  if (fileCheck == false){
-    message("Failed opening files", "Reset or 'help'");
-    keepLooping = true;
-    while(keepLooping){
-      if(Serial.available() > 0){
-        serialData = Serial.readStringUntil('\n'); 
-        if(serialData == "wipe"){
-          wipeHww();
-          keepLooping = false;
-        }
-        if(serialData == "help"){
-          help();
-          keepLooping = false;
-        }
-        if(serialData.substring(0,7) == "restore"){
-          message("Enter seed", "Seperated by spaces");
-          if(Serial.available() > 0){
-            serialData = Serial.readStringUntil('\n'); 
-            restore = serialData;
-            keepLooping = false;
-          }
-        }
-      }
+  if (checkFiles() == false) {
+    message = "Failed opening files";
+    subMessage = "Reset or 'help'";
+  }
+
+  showMessage(message, subMessage);
+  serialData = awaitSerialData();
+  int spacePos = serialData.indexOf(" ");
+  command = serialData.substring(0, spacePos);
+  if (spacePos == -1) {
+    commandData = "";
+  } else {
+    commandData = serialData.substring(spacePos + 1, serialData.length());
+  }
+
+
+  if (command == COMMAND_HELP) {
+    help();
+  } else if (command == COMMAND_WIPE) {
+    showMessage("Resetting...", "");
+    delay(2000);
+
+    if (commandData == "") {
+      showMessage("Enter password", "8 numbers/letters");
+      commandData = awaitSerialData();
+    }
+
+    hasPassword = wipeHww(commandData);
+    if (hasPassword == true) {
+      message = "Successfully wiped!";
+      subMessage = "Every new beginning comes from some other beginning's end.";
+    } else {
+      message = "Error, try again";
+      subMessage = "8 numbers/letters";
     }
   }
 
-  // check password
-  keepLooping = true;
-  while(passwordEntered == false){
-    message("Welcome", "Enter password");
-    while(keepLooping){
-      if(Serial.available() > 0){
-        serialData = Serial.readStringUntil('\n'); 
-        if(serialData == "wipe"){
-          wipeHww();
-          passwordEntered == false;
-          keepLooping = false;
-        }
-        if(serialData == "help"){
-          help();
-          keepLooping = false;
-        }
-        else{
-          hashPass(serialData);
-          if(keyHash == fetchedHash){
-            passwordEntered == true;
-            keepLooping = false;
-          }
-          else{
-            message("Error, try again", "Password failed");
-          }
-        }
-      }
-    }
-  }
-
-  // check for commands or psbt
-  keepLooping = true;
-  while(keepLooping){
-    message("Bwahaha", "'seed','wipe', or send PSBT");
-    if(Serial.available() > 0){
-      serialData = Serial.readStringUntil('\n'); 
-      if(serialData.substring(0,5) == "cHNid"){
-        psbtStr = serialData;
-        parseSignPsbt();
-      }
-      if(serialData == "seed"){
-        readFile(SPIFFS, "/mn.txt", true);
-        Serial.print(fetchedEncrytptedSeed);
-      }
-      if(serialData == "wipe"){
-        wipeHww();
-        keepLooping = false;
-      }
-    }
-  }
   delay(DELAY_MS);
 }
 
@@ -151,41 +120,45 @@ void loop() {
 //================================HELPERS=================================//
 //========================================================================//
 
-void wipeHww(){
-  message("Resetting...", "");
-  delay(2000);
-  message("Enter password", "8 numbers/letters");
-  keepLooping = true;
-  while(keepLooping){
-    if(Serial.available() > 0){
-      serialData = Serial.readStringUntil('\n');
-      if (isAlphaNumeric(serialData) == true){
-        deleteFile(SPIFFS, "/mn.txt");
-        deleteFile(SPIFFS, "/hash.txt");
-        createMn();
-        hashPass(serialData);
-        Serial.println(mnemonic);
-        Serial.println(keyHash);
-        writeFile(SPIFFS, "/mn.txt", mnemonic);
-        writeFile(SPIFFS, "/hash.txt", keyHash);
-        keepLooping = false;
-        passwordEntered = false;
-      }
-      else{
-        message("Error, try again", "8 numbers/letters");
-      }
-    }
-    delay(DELAY_MS);
+String awaitSerialData() {
+  while (Serial.available() == 0) {
+    // just loop and wait
   }
+  return Serial.readStringUntil('\n');
+}
+
+bool checkFiles() {
+  bool isFileOK = readFile(SPIFFS, "/mn.txt", true);
+  if (isFileOK == false) return false;
+  return readFile(SPIFFS, "/hash.txt", false);
+}
+
+bool wipeHww(String password) {
+  showMessage("my password:", password);
+  if (isAlphaNumeric(password) == false)
+    return false;
+
+  deleteFile(SPIFFS, "/mn.txt");
+  deleteFile(SPIFFS, "/hash.txt");
+  createMn();
+  hashPassword(password);
+  Serial.println(mnemonic);
+  Serial.println(keyHash);
+  writeFile(SPIFFS, "/mn.txt", mnemonic);
+  writeFile(SPIFFS, "/hash.txt", keyHash);
+
+  delay(DELAY_MS);
+  return true;
 }
 
 
-void parseSignPsbt(){
+
+void parseSignPsbt() {
   HDPrivateKey hd(mnemonic, password);
   psbt.parseBase64(psbtStr);
   // check parsing is ok
-  if(!psbt){
-    message("Failed parsing", "Send PSBT again");
+  if (!psbt) {
+    showMessage("Failed parsing", "Send PSBT again");
     return;
   }
   tft.fillScreen(TFT_BLACK);
@@ -195,40 +168,40 @@ void parseSignPsbt(){
   tft.println("Transactions details:");
   // going through all outputs
   tft.println("Outputs:");
-  for(int i=0; i<psbt.tx.outputsNumber; i++){
+  for (int i = 0; i < psbt.tx.outputsNumber; i++) {
     // print addresses
     tft.print(psbt.tx.txOuts[i].address(&Testnet));
-    if(psbt.txOutsMeta[i].derivationsLen > 0){ // there is derivation path
+    if (psbt.txOutsMeta[i].derivationsLen > 0) { // there is derivation path
       // considering only single key for simplicity
       PSBTDerivation der = psbt.txOutsMeta[i].derivations[0];
       HDPublicKey pub = hd.derive(der.derivation, der.derivationLen).xpub();
-      if(pub.address() == psbt.tx.txOuts[i].address()){
+      if (pub.address() == psbt.tx.txOuts[i].address()) {
         tft.print(" (change) ");
       }
     }
     tft.print(" -> ");
-    tft.print(psbt.tx.txOuts[i].btcAmount()*1e3);
+    tft.print(psbt.tx.txOuts[i].btcAmount() * 1e3);
     tft.println(" mBTC");
   }
   tft.print("Fee: ");
-  tft.print(float(psbt.fee())/100); // Arduino can't print 64-bit ints
+  tft.print(float(psbt.fee()) / 100); // Arduino can't print 64-bit ints
   tft.println(" bits");
 
   //wait for confirm
   bool waitToConfirm = true;
-  message("Pass 'sign' to sign the psbt", "");
-  while(waitToConfirm){
-    if(Serial.available() > 0){
+  showMessage("Pass 'sign' to sign the psbt", "");
+  while (waitToConfirm) {
+    if (Serial.available() > 0) {
       // If we're here, then serial data has been received
-      serialData = Serial.readStringUntil('\n'); 
+      serialData = Serial.readStringUntil('\n');
     }
-    if(serialData == "sign"){
-      if(!hd){ // check if it is valid
+    if (serialData == "sign") {
+      if (!hd) { // check if it is valid
         Serial.println("Invalid xpub");
         waitToConfirm = false;
         return;
       }
-      else{
+      else {
         psbt.sign(hd);
         Serial.println(psbt.toBase64()); // now you can combine and finalize PSBTs in Bitcoin Core
         waitToConfirm = false;
@@ -238,21 +211,21 @@ void parseSignPsbt(){
   }
 }
 
-void hashPass(String key){
-  byte hash[64] = { 0 }; 
+void hashPassword(String key) {
+  byte hash[64] = { 0 };
   int hashLen = 0;
   hashLen = sha256(key, hash);
   keyHash = toHex(hash, hashLen);
 }
 
-void createMn(){
-  if(restore != ""){
+void createMn() {
+  if (restore != "") {
     // be nice to add a check here
     mnemonic = restore;
   }
-  else{
+  else {
     // entropy bytes to mnemonic
-    uint8_t arr[] = {'1','1','1','1','1','1','1','1','1','1','1','1','1','1','1','1'};
+    uint8_t arr[] = {'1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'};
     String mn = mnemonicFromEntropy(arr, sizeof(arr));
     Serial.println(mn);
     uint8_t out[16];
@@ -281,15 +254,15 @@ String getValue(String data, char separator, int index)
   return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
-bool isAlphaNumeric(String instr){
-  for(int i = 0; i < instr.length(); i++){
-    if(instr.length() > 7){
+bool isAlphaNumeric(String instr) {
+  if (instr.length() < 8) {
+    return false;
+  }
+  for (int i = 0; i < instr.length(); i++) {
+    if (isalpha(instr[i])) {
       continue;
     }
-    if(isalpha(instr[i])){
-      continue;
-    }
-    if(isdigit(instr[i])){
+    if (isdigit(instr[i])) {
       continue;
     }
     return false;
@@ -301,7 +274,7 @@ bool isAlphaNumeric(String instr){
 //===============================UI STUFF=================================//
 //========================================================================//
 
-void logo(){
+void logo() {
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   tft.setTextSize(4);
@@ -314,7 +287,7 @@ void logo(){
   Serial.println("BabyBowser LNbits/ubitcoin HWW");
 }
 
-void message(String message, String additional)
+void showMessage(String message, String additional)
 {
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -355,43 +328,43 @@ void help()
 //=============================SPIFFS STUFF===============================//
 //========================================================================//
 
-void readFile(fs::FS &fs, const char * path, bool seed){
+bool readFile(fs::FS &fs, const char * path, bool seed) {
   Serial.printf("Reading file: %s\r\n", path);
   File file = fs.open(path);
-  if(!file || file.isDirectory()){
+  if (!file || file.isDirectory()) {
     Serial.println("- failed to open file for reading");
-    fileCheck = false;
-    return;
+    return false;
   }
-  while(file.available()){
-    if(seed == false){
+  while (file.available()) {
+    if (seed == false) {
       fetchedHash = file.read();
     }
-    else{
+    else {
       fetchedEncrytptedSeed = file.read();
     }
   }
   file.close();
+  return true;
 }
 
-void writeFile(fs::FS &fs, const char * path, String message){
+void writeFile(fs::FS &fs, const char * path, String message) {
   Serial.printf("Writing file: %s\r\n", path);
   File file = fs.open(path, FILE_WRITE);
-  if(!file){
+  if (!file) {
     Serial.println("- failed to open file for writing");
     return;
   }
-  if(file.print(message)){
-  Serial.println("- file written");
+  if (file.print(message)) {
+    Serial.println("- file written");
   } else {
     Serial.println("- write failed");
   }
   file.close();
 }
 
-void deleteFile(fs::FS &fs, const char * path){
+void deleteFile(fs::FS &fs, const char * path) {
   Serial.printf("Deleting file: %s\r\n", path);
-  if(fs.remove(path)){
+  if (fs.remove(path)) {
     Serial.println("- file deleted");
   } else {
     Serial.println("- delete failed");
