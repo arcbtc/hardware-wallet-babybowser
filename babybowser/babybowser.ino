@@ -53,6 +53,10 @@ const String COMMAND_SEED = "/seed";
 const String COMMAND_SIGN_PSBT = "/sign";
 const String COMMAND_HELP = "/help";
 
+struct FileRead {
+  bool success;
+  String data;
+};
 
 void setup() {
   Serial.begin(9600);
@@ -76,7 +80,7 @@ String message = "Welcome";
 String subMessage = "Enter password";
 
 void loop() {
-  if (checkFiles() == false) {
+  if (loadFiles() == false) {
     message = "Failed opening files";
     subMessage = "Reset or 'help'";
   }
@@ -165,11 +169,12 @@ void executeShowSeed(String commandData) {
   if (authenticated == false) {
     message = "Enter password!";
     subMessage = "8 numbers/letters";
-  } else {
-    message = "";
-    subMessage = "";
-    printMnemonic(fetchedEncrytptedSeed);
+    return;
   }
+  message = "";
+  subMessage = "";
+  printMnemonic(fetchedEncrytptedSeed);
+
 }
 
 void executeRestore(String commandData) {
@@ -181,32 +186,34 @@ void executeRestore(String commandData) {
   if (size == 0) {
     message = "Wrong word count!";
     subMessage = "Must be 12, 15, 18, 21 or 24";
-  } else {
-    uint8_t out[size];
-    size_t len = mnemonicToEntropy(commandData, out, sizeof(out));
-    String mn = mnemonicFromEntropy(out, sizeof(out));
-    deleteFile(SPIFFS, "/mn.txt");
-    writeFile(SPIFFS, "/mn.txt", mn);
-    printMnemonic(mn);
-
-    message = "Restore successfull";
-    subMessage = "Use `/seed` to view word list";
+    return;
   }
+  uint8_t out[size];
+  size_t len = mnemonicToEntropy(commandData, out, sizeof(out));
+  String mn = mnemonicFromEntropy(out, sizeof(out));
+  deleteFile(SPIFFS, "/mn.txt");
+  writeFile(SPIFFS, "/mn.txt", mn);
+  printMnemonic(mn);
+
+  message = "Restore successfull";
+  subMessage = "Use `/seed` to view word list";
+
 }
 
 void executeSignPsbt(String commandData) {
   if (authenticated == false) {
     message = "Enter password!";
     subMessage = "8 numbers/letters";
-  } else {
-    message = "PSBT";
-    subMessage = commandData;
+    return;
   }
+  message = "PSBT";
+  subMessage = commandData;
+
 }
 
 void executeUnknown(String commandData) {
-  message = "Unknonw command";
-  subMessage = "Use `/help` for details";
+  message = "Unknown command";
+  subMessage = "`/help` for details";
 }
 //========================================================================//
 //================================HELPERS=================================//
@@ -219,10 +226,14 @@ String awaitSerialData() {
   return Serial.readStringUntil('\n');
 }
 
-bool checkFiles() {
-  bool isFileOK = readFile(SPIFFS, "/mn.txt", true);
-  if (isFileOK == false) return false;
-  return readFile(SPIFFS, "/hash.txt", false);
+bool loadFiles() {
+  FileRead mnFile = readFile(SPIFFS, "/mn.txt");
+  fetchedEncrytptedSeed = mnFile.data;
+
+  FileRead pwdFile = readFile(SPIFFS, "/hash.txt");
+  fetchedHash = pwdFile.data;
+
+  return mnFile.success && pwdFile.success;
 }
 
 int getMnemonicBytes(String menmonicSentence) {
@@ -457,35 +468,25 @@ void printMnemonic(String mn) {
 //=============================SPIFFS STUFF===============================//
 //========================================================================//
 
-bool readFile(fs::FS &fs, const char * path, bool seed) {
+FileRead readFile(fs::FS &fs, const char * path) {
   Serial.printf("Reading file: %s\r\n", path);
   File file = fs.open(path);
   if (!file || file.isDirectory()) {
     Serial.println("- failed to open file for reading");
-    return false;
+    return {false, ""};
   }
 
-  if (seed == false) {
-    fetchedHash = "";
-  }
-  else {
-    fetchedEncrytptedSeed = "";
-  }
-  while (file.available()) {
-    if (seed == false) {
-      fetchedHash += (char)file.read();
-    }
-    else {
-      fetchedEncrytptedSeed += (char)file.read();
-    }
-  }
+  String data = "";
+  while (file.available())
+    data += (char)file.read();
+
+
   file.close();
-  return true;
+  return {true, data};
 }
 
 void writeFile(fs::FS &fs, const char * path, String message) {
   Serial.printf("Writing file: %s\r\n", path);
-  Serial.println("writeFile message: " + message);
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
     Serial.println("- failed to open file for writing");
