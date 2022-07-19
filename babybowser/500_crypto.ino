@@ -5,18 +5,7 @@ String hashPassword(String key) {
   return toHex(hash, hashLen);
 }
 
-void createMn() {
-  if (restore != "") {
-    // be nice to add a check here
-    mnemonic = restore;
-  }
-  else {
-    // entropy bytes to mnemonic
-    uint8_t arr[] = {'1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'};
-    String mn = mnemonicFromEntropy(arr, sizeof(arr));
-    Serial.println("mnemonicFromEntropy: " + mn);
-    uint8_t out[16];
-    size_t len = mnemonicToEntropy(mn, out, sizeof(out));
-    mnemonic = toHex(out, len);
-  }
+String createMnemonic(int numberOfWords) {
+    String mn = generateMnemonic(numberOfWords);
+    return mn;
 }

@@ -30,7 +30,6 @@ String restore = ""; // todo: revisit
 SHA256 h;
 TFT_eSPI tft = TFT_eSPI();
 
-String mnemonic = ""; // todo: revisit
 // String password = "";
 
 struct FileData {

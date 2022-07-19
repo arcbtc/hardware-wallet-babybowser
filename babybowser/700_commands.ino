@@ -161,11 +161,11 @@ bool wipeHww(String password) {
 
   deleteFile(SPIFFS, "/mn.txt");
   deleteFile(SPIFFS, "/hash.txt");
-  createMn();
+  String mn = createMnemonic(24); // todo: allow 12 also
   keyHash = hashPassword(password); // todo: rename var
-  Serial.println("wipeHww mnemonic: " + mnemonic);
+  Serial.println("wipeHww mnemonic: " + mn); // todo: remove
   Serial.println("wipeHww keyHash: " + keyHash);
-  writeFile(SPIFFS, "/mn.txt", mnemonic);
+  writeFile(SPIFFS, "/mn.txt", mn);
   writeFile(SPIFFS, "/hash.txt", keyHash);
 
   delay(DELAY_MS);

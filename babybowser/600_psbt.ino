@@ -3,6 +3,7 @@ String psbtStr = "";
 
 String serialData1;
 String password;
+String mnemonic;
 
 void parseSignPsbt() {
   HDPrivateKey hd(mnemonic, password);
