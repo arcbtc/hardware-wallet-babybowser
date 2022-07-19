@@ -1,28 +1,30 @@
-PSBT psbt; // todo: revisit, required to be global?
-String psbtStr = "";
+// todo: revisit, required to be global?
+
 
 String serialData1;
 String password;
 String mnemonic;
 
-void parseSignPsbt() {
-  HDPrivateKey hd(mnemonic, password);
-  psbt.parseBase64(psbtStr);
+
+PSBT parseBase64Psbt(String psbtBase64) {
+  PSBT psbt;
+  psbt.parseBase64(psbtBase64);
+  return psbt;
+}
+
+void printPsbtDetails(PSBT psbt, HDPrivateKey hd) {
+
   // check parsing is ok
-  if (!psbt) {
-    showMessage("Failed parsing", "Send PSBT again");
-    return;
-  }
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_RED, TFT_BLACK);
-  tft.setTextSize(3);
+  tft.setTextSize(1);
   tft.setCursor(0, 30);
   tft.println("Transactions details:");
   // going through all outputs
   tft.println("Outputs:");
   for (int i = 0; i < psbt.tx.outputsNumber; i++) {
     // print addresses
-    tft.print(psbt.tx.txOuts[i].address(&Testnet));
+    tft.print(psbt.tx.txOuts[i].address(&Mainnet)); // todo: support testnet
     if (psbt.txOutsMeta[i].derivationsLen > 0) { // there is derivation path
       // considering only single key for simplicity
       PSBTDerivation der = psbt.txOutsMeta[i].derivations[0];
@@ -38,27 +40,5 @@ void parseSignPsbt() {
   tft.print("Fee: ");
   tft.print(float(psbt.fee()) / 100); // Arduino can't print 64-bit ints
   tft.println(" bits");
-
-  //wait for confirm
-  bool waitToConfirm = true;
-  showMessage("Pass 'sign' to sign the psbt", "");
-  while (waitToConfirm) {
-    if (Serial.available() > 0) {
-      // If we're here, then serial data has been received
-      serialData1 = Serial.readStringUntil('\n');
-    }
-    if (serialData1 == "sign") {
-      if (!hd) { // check if it is valid
-        Serial.println("Invalid xpub");
-        waitToConfirm = false;
-        return;
-      }
-      else {
-        psbt.sign(hd);
-        Serial.println(psbt.toBase64()); // now you can combine and finalize PSBTs in Bitcoin Core
-        waitToConfirm = false;
-      }
-    }
-    delay(DELAY_MS);
-  }
 }
+

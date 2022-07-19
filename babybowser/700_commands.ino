@@ -2,7 +2,7 @@
 //================================COMMANDS================================//
 //========================================================================//
 
-String encrytptedSeed = "";
+String encrytptedMnemonic = "";
 String passwordHash = "";
 
 String keyHash = ""; // todo: revisit
@@ -44,7 +44,7 @@ void executeCommand(Command c) {
     executePasswordCheck(c.data);
   } else if (c.cmd == COMMAND_SEED) {
     executeShowSeed(c.data);
-  } else if (c.cmd == COMMAND_SIGN_PSBT) {
+  } else if (c.cmd == COMMAND_SEND_PSBT) {
     executeSignPsbt(c.data);
   } else if (c.cmd == COMMAND_RESTORE) {
     executeRestore(c.data);
@@ -101,7 +101,7 @@ void executeShowSeed(String commandData) {
   }
   message = "";
   subMessage = "";
-  printMnemonic(encrytptedSeed);
+  printMnemonic(encrytptedMnemonic);
 
 }
 
@@ -134,8 +134,35 @@ void executeSignPsbt(String commandData) {
     subMessage = "8 numbers/letters";
     return;
   }
-  message = "PSBT";
-  subMessage = commandData;
+
+  PSBT psbt = parseBase64Psbt(commandData);
+  if (!psbt) {
+    message = "Failed parsing";
+    subMessage = "Send PSBT again";
+    return;
+  }
+
+  HDPrivateKey hd(encrytptedMnemonic, ""); // todo: no passphrase yet
+  if (!hd) { // check if it is valid
+    message = "Invalid XXXXXXXX";
+    return;
+  }
+
+  HDPrivateKey hd44 = hd.derive("m/44'/0'/0'"); // todo: 49', 84', 86'
+  Serial.println("### hd44.xpub()" + hd44.xpub().xpub());
+  
+
+  printPsbtDetails(psbt, hd44);
+
+  commandData = awaitSerialData();
+  if (commandData == COMMAND_SIGN_PSBT) {
+    int signedInputCount = psbt.sign(hd44);
+    Serial.println(psbt.toBase64());
+    message = "Signed inputs:";
+    subMessage = String(signedInputCount);
+  } else {
+    message = "Welcome XXX";
+  }
 
 }
 
@@ -147,7 +174,7 @@ void executeUnknown(String commandData) {
 
 bool loadFiles() {
   FileData mnFile = readFile(SPIFFS, "/mn.txt");
-  encrytptedSeed = mnFile.data;
+  encrytptedMnemonic = mnFile.data;
 
   FileData pwdFile = readFile(SPIFFS, "/hash.txt");
   passwordHash = pwdFile.data;
