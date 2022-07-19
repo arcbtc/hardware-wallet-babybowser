@@ -17,7 +17,6 @@
 #include <ArduinoJson.h>
 #include "Bitcoin.h"
 #include "PSBT.h"
-#include "./babybowser.h"
 
 #include <FS.h>
 #include <SPIFFS.h>
@@ -36,6 +35,11 @@ String mnemonic = ""; // todo: revisit
 
 struct FileData {
   bool success;
+  String data;
+};
+
+struct Command {
+  String cmd;
   String data;
 };
 

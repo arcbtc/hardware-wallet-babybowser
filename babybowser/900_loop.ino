@@ -1,3 +1,3 @@
 void loop() {
-    run();
+    listenForCommands();
 }

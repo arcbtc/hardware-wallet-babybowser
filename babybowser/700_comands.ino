@@ -16,7 +16,7 @@ String subMessage = "Enter password";
 
 String serialData = "";
 
-void run() {
+void listenForCommands() {
   if (loadFiles() == false) {
     message = "Failed opening files";
     subMessage = "Reset or 'help'";
@@ -26,35 +26,30 @@ void run() {
     showMessage(message, subMessage);
 
   serialData = awaitSerialData();
-  int spacePos = serialData.indexOf(" ");
-  command = serialData.substring(0, spacePos);
-  if (spacePos == -1) {
-    commandData = "";
-  } else {
-    commandData = serialData.substring(spacePos + 1, serialData.length());
-  }
 
-  executeCommand(command, commandData);
+
+  Command c = extractCommand(serialData);
+  executeCommand(c);
 
   delay(DELAY_MS);
 }
 
 
-void executeCommand(String command, String commandData) {
-  if (command == COMMAND_HELP) {
-    executeHelp(commandData);
-  } else if (command == COMMAND_WIPE) {
-    executeWipeHww(commandData);
-  } else if (command == COMMAND_PASSWORD) {
-    executePasswordCheck(commandData);
-  } else if (command == COMMAND_SEED) {
-    executeShowSeed(commandData);
-  } else if (command == COMMAND_SIGN_PSBT) {
-    executeSignPsbt(commandData);
-  } else if (command == COMMAND_RESTORE) {
-    executeRestore(commandData);
+void executeCommand(Command c) {
+  if (c.cmd == COMMAND_HELP) {
+    executeHelp(c.data);
+  } else if (c.cmd == COMMAND_WIPE) {
+    executeWipeHww(c.data);
+  } else if (c.cmd == COMMAND_PASSWORD) {
+    executePasswordCheck(c.data);
+  } else if (c.cmd == COMMAND_SEED) {
+    executeShowSeed(c.data);
+  } else if (c.cmd == COMMAND_SIGN_PSBT) {
+    executeSignPsbt(c.data);
+  } else if (c.cmd == COMMAND_RESTORE) {
+    executeRestore(c.data);
   } else {
-    executeUnknown(commandData);
+    executeUnknown(c.data);
   }
 }
 
@@ -175,4 +170,15 @@ bool wipeHww(String password) {
 
   delay(DELAY_MS);
   return true;
+}
+
+Command extractCommand(String s) {
+  int spacePos = s.indexOf(" ");
+  command = s.substring(0, spacePos);
+  if (spacePos == -1) {
+    commandData = "";
+  } else {
+    commandData = s.substring(spacePos + 1, s.length());
+  }
+  return {command, commandData};
 }
