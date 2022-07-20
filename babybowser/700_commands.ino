@@ -106,6 +106,11 @@ void executeShowSeed(String commandData) {
 }
 
 void executeRestore(String commandData) {
+  if (authenticated == false) {
+    message = "Enter new password!";
+    subMessage = "8 numbers/letters";
+    return;
+  }
   if (commandData == "") {
     showMessage("Enter seed words", "Separated by spaces");
     commandData = awaitSerialData();
@@ -150,7 +155,7 @@ void executeSignPsbt(String commandData) {
 
   HDPrivateKey hd44 = hd.derive("m/44'/0'/0'"); // todo: 49', 84', 86'
   Serial.println("### hd44.xpub()" + hd44.xpub().xpub());
-  
+
 
   printPsbtDetails(psbt, hd44);
 
