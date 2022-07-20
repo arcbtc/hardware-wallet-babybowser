@@ -5,8 +5,6 @@
 String encrytptedMnemonic = "";
 String passwordHash = "";
 
-String keyHash = ""; // todo: revisit
-
 bool authenticated = false;
 String command = "";
 String commandData = "";
@@ -62,8 +60,8 @@ void executePasswordCheck(String commandData) {
     showMessage("Enter password", "8 numbers/letters");
     commandData = awaitSerialData();
   }
-  String passwordHash = hashPassword(commandData);
-  if (passwordHash == keyHash) {
+  String hash = hashPassword(commandData);
+  if (passwordHash == hash) {
     authenticated = true;
     message = "Password correct!";
     subMessage = "Ready to sign sir!";
@@ -194,11 +192,11 @@ bool wipeHww(String password) {
   deleteFile(SPIFFS, "/mn.txt");
   deleteFile(SPIFFS, "/hash.txt");
   String mn = createMnemonic(24); // todo: allow 12 also
-  keyHash = hashPassword(password); // todo: rename var
+  passwordHash = hashPassword(password); // todo: rename var
   Serial.println("wipeHww mnemonic: " + mn); // todo: remove
-  Serial.println("wipeHww keyHash: " + keyHash);
+  Serial.println("wipeHww passwordHash: " + passwordHash);
   writeFile(SPIFFS, "/mn.txt", mn);
-  writeFile(SPIFFS, "/hash.txt", keyHash);
+  writeFile(SPIFFS, "/hash.txt", passwordHash);
 
   delay(DELAY_MS);
   return true;
