@@ -6,6 +6,6 @@ String hashPassword(String key) {
 }
 
 String createMnemonic(int numberOfWords) {
-    String mn = generateMnemonic(numberOfWords);
-    return mn;
+  String mn = generateMnemonic(numberOfWords);
+  return mn;
 }

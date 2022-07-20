@@ -6,8 +6,8 @@ String encrytptedMnemonic = "";
 String passwordHash = "";
 
 bool authenticated = false;
-String command = "";
-String commandData = "";
+String command = ""; // todo: remove
+String commandData = ""; // todo: remove
 
 String message = "Welcome";
 String subMessage = "Enter password";
@@ -27,6 +27,8 @@ void listenForCommands() {
 
 
   Command c = extractCommand(serialData);
+  // flush stale data from buffer
+  Serial.println("Received command: " + c.cmd);
   executeCommand(c);
 
   delay(DELAY_MS);
@@ -40,6 +42,8 @@ void executeCommand(Command c) {
     executeWipeHww(c.data);
   } else if (c.cmd == COMMAND_PASSWORD) {
     executePasswordCheck(c.data);
+  } else if (c.cmd == COMMAND_PASSWORD_CLEAR) {
+    executePasswordClear(c.data);
   } else if (c.cmd == COMMAND_SEED) {
     executeShowSeed(c.data);
   } else if (c.cmd == COMMAND_SEND_PSBT) {
@@ -70,6 +74,17 @@ void executePasswordCheck(String commandData) {
     message = "Wrong password, try again";
     subMessage = "8 numbers/letters";
   }
+  Serial.println(COMMAND_PASSWORD + " " + String(authenticated));
+}
+
+void executePasswordClear(String commandData) {
+  authenticated = false;
+  Serial.println(COMMAND_PASSWORD_CLEAR + " 1");
+  showMessage("Logging out...", "");
+  delay(2000);
+
+  message = "Logged out";
+  subMessage = "Enter password";
 }
 
 void executeWipeHww(String commandData) {
@@ -147,26 +162,23 @@ void executeSignPsbt(String commandData) {
 
   HDPrivateKey hd(encrytptedMnemonic, ""); // todo: no passphrase yet
   if (!hd) { // check if it is valid
-    message = "Invalid XXXXXXXX";
+    message = "Invalid Mnemonic";
     return;
   }
 
   HDPrivateKey hd44 = hd.derive("m/44'/0'/0'"); // todo: 49', 84', 86'
-  Serial.println("### hd44.xpub()" + hd44.xpub().xpub());
-
 
   printPsbtDetails(psbt, hd44);
 
   commandData = awaitSerialData();
   if (commandData == COMMAND_SIGN_PSBT) {
     int signedInputCount = psbt.sign(hd44);
-    Serial.println(psbt.toBase64());
+    Serial.println(COMMAND_SIGN_PSBT + " " + psbt.toBase64());
     message = "Signed inputs:";
     subMessage = String(signedInputCount);
   } else {
-    message = "Welcome XXX";
+    executeUnknown(commandData);
   }
-
 }
 
 void executeUnknown(String commandData) {
