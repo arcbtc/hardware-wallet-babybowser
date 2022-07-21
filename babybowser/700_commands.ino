@@ -200,6 +200,7 @@ void executeSignPsbt(String commandData) {
     uint8_t signed86 = psbt.sign(hd86);
     uint8_t signedInputCount = signed44 + signed49 + signed84 + signed86;
 
+    Serial.println(COMMAND_SIGN_PSBT + " " + psbt.toBase64());
     message = "Signed inputs:";
     // Stupid hack. For some reason `psbt.sign()` returns the square of the signed input count
     subMessage = String((int)sqrt(signedInputCount));
