@@ -25,7 +25,6 @@ void listenForCommands() {
 
   serialData = awaitSerialData();
 
-
   Command c = extractCommand(serialData);
   // flush stale data from buffer
   Serial.println("Received command: " + c.cmd);
@@ -49,7 +48,7 @@ void executeCommand(Command c) {
   } else if (c.cmd == COMMAND_SEND_PSBT) {
     executeSignPsbt(c.data);
   } else if (c.cmd == COMMAND_RESTORE) {
-    executeRestore(c.data);
+    executeRestore(c.data, "");
   } else {
     executeUnknown(c.data);
   }
@@ -61,8 +60,9 @@ void executeHelp(String commandData) {
 
 void executePasswordCheck(String commandData) {
   if (commandData == "") {
-    showMessage("Enter password", "8 numbers/letters");
-    commandData = awaitSerialData();
+    message = "Enter password";
+    subMessage = "8 numbers/letters";
+    return;
   }
   String hash = hashPassword(commandData);
   if (passwordHash == hash) {
@@ -87,16 +87,17 @@ void executePasswordClear(String commandData) {
   subMessage = "Enter password";
 }
 
-void executeWipeHww(String commandData) {
+void executeWipeHww(String password) {
+  if (password == "") {
+    message = "Enter new password";
+    subMessage = "8 numbers/letters";
+    return;
+  }
+
   showMessage("Resetting...", "");
   delay(2000);
 
-  if (commandData == "") {
-    showMessage("Enter new password", "8 numbers/letters");
-    commandData = awaitSerialData();
-  }
-
-  authenticated = wipeHww(commandData);
+  authenticated = wipeHww(password, "");
   if (authenticated == true) {
     message = "Successfully wiped!";
     subMessage = "Every new beginning comes from some other beginning's end.";
@@ -104,6 +105,7 @@ void executeWipeHww(String commandData) {
     message = "Error, try again";
     subMessage = "8 numbers/letters";
   }
+  Serial.println(COMMAND_WIPE + " " + String(authenticated));
 }
 
 void executeShowSeed(String commandData) {
@@ -115,35 +117,50 @@ void executeShowSeed(String commandData) {
   message = "";
   subMessage = "";
   printMnemonic(encrytptedMnemonic);
-
 }
 
-void executeRestore(String commandData) {
-  if (authenticated == false) {
-    message = "Enter new password!";
-    subMessage = "8 numbers/letters";
+void executeRestore(String mnemonic, String password) {
+  if (mnemonic == "") {
+    message = "Enter seed words";
+    subMessage = "Separated by spaces";
     return;
   }
-  if (commandData == "") {
-    showMessage("Enter seed words", "Separated by spaces");
-    commandData = awaitSerialData();
-  }
-  int size = getMnemonicBytes(commandData);
+
+  int size = getMnemonicBytes(mnemonic);
   if (size == 0) {
     message = "Wrong word count!";
     subMessage = "Must be 12, 15, 18, 21 or 24";
+    Serial.println(COMMAND_RESTORE + " 0");
     return;
   }
-  uint8_t out[size];
-  size_t len = mnemonicToEntropy(commandData, out, sizeof(out));
-  String mn = mnemonicFromEntropy(out, sizeof(out));
-  deleteFile(SPIFFS, "/mn.txt");
-  writeFile(SPIFFS, "/mn.txt", mn);
-  printMnemonic(mn);
 
-  message = "Restore successfull";
-  subMessage = "Use `/seed` to view word list";
+  if (!hasValidChecksum(mnemonic, size)) {
+    message = "Wrong mnemonic!";
+    subMessage = "Incorrect checksum";
+    Serial.println(COMMAND_RESTORE + " 0");
+    return;
+  }
 
+  if (password == "") {
+    showMessage("Enter new password!", "8 numbers/letters");
+    serialData = awaitSerialData();
+    Command c = extractCommand(serialData);
+    if (c.cmd != COMMAND_PASSWORD) {
+      executeUnknown("");
+      return;
+    }
+    password = c.data;
+  }
+
+  authenticated = wipeHww(password, mnemonic);
+  if (authenticated == true) {
+    message = "Restore successfull";
+    subMessage = "/seed` to view word list";
+  } else {
+    message = "Error, try again";
+    subMessage = "8 numbers/letters";
+  }
+  Serial.println(COMMAND_RESTORE + " " + String(authenticated));
 }
 
 void executeSignPsbt(String commandData) {
@@ -169,10 +186,11 @@ void executeSignPsbt(String commandData) {
   HDPrivateKey hd44 = hd.derive("m/44'/0'/0'"); // todo: 49', 84', 86'
 
   printPsbtDetails(psbt, hd44);
+  Serial.println(COMMAND_SEND_PSBT);
 
   commandData = awaitSerialData();
   if (commandData == COMMAND_SIGN_PSBT) {
-    int signedInputCount = psbt.sign(hd44);
+    uint8_t signedInputCount = psbt.sign(hd44);
     Serial.println(COMMAND_SIGN_PSBT + " " + psbt.toBase64());
     message = "Signed inputs:";
     subMessage = String(signedInputCount);
@@ -197,22 +215,34 @@ bool loadFiles() {
   return mnFile.success && pwdFile.success;
 }
 
-bool wipeHww(String password) {
+bool wipeHww(String password, String mnemonic) {
   if (isAlphaNumeric(password) == false)
     return false;
 
   deleteFile(SPIFFS, "/mn.txt");
   deleteFile(SPIFFS, "/hash.txt");
-  String mn = createMnemonic(24); // todo: allow 12 also
-  passwordHash = hashPassword(password); // todo: rename var
-  Serial.println("wipeHww mnemonic: " + mn); // todo: remove
-  Serial.println("wipeHww passwordHash: " + passwordHash);
-  writeFile(SPIFFS, "/mn.txt", mn);
+  if (mnemonic == "") {
+    mnemonic = createMnemonic(24); // todo: allow 12 also
+  }
+  passwordHash = hashPassword(password);
+  writeFile(SPIFFS, "/mn.txt", mnemonic);
   writeFile(SPIFFS, "/hash.txt", passwordHash);
 
   delay(DELAY_MS);
   return true;
 }
+
+
+bool hasValidChecksum(String mnemonic, int size) {
+  uint8_t out[size];
+  size_t len = mnemonicToEntropy(mnemonic, out, sizeof(out));
+  String deserializedMnemonic = mnemonicFromEntropy(out, sizeof(out));
+  Serial.println("mnemonic: " + mnemonic);
+  Serial.println("deserializedMnemonic: " + deserializedMnemonic);
+  Serial.println("mnemonic == deserializedMnemonic: " + String(mnemonic == deserializedMnemonic));
+  return mnemonic == deserializedMnemonic;
+}
+
 
 Command extractCommand(String s) {
   int spacePos = s.indexOf(" ");
