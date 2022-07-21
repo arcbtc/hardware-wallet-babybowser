@@ -183,17 +183,26 @@ void executeSignPsbt(String commandData) {
     return;
   }
 
-  HDPrivateKey hd44 = hd.derive("m/44'/0'/0'"); // todo: 49', 84', 86'
+  // todo: custom paths
+  HDPrivateKey hd44 = hd.derive("m/44'/0'/0'"); // p2pkh
+  HDPrivateKey hd49 = hd.derive("m/49'/0'/0'"); // p2sh-p2wpkh
+  HDPrivateKey hd84 = hd.derive("m/84'/0'/0'"); // p2wpkh
+  HDPrivateKey hd86 = hd.derive("m/86'/0'/0'"); // p2tr
 
   printPsbtDetails(psbt, hd44);
   Serial.println(COMMAND_SEND_PSBT);
 
   commandData = awaitSerialData();
   if (commandData == COMMAND_SIGN_PSBT) {
-    uint8_t signedInputCount = psbt.sign(hd44);
-    Serial.println(COMMAND_SIGN_PSBT + " " + psbt.toBase64());
+    uint8_t signed44 = psbt.sign(hd44);
+    uint8_t signed49 = psbt.sign(hd49);
+    uint8_t signed84 = psbt.sign(hd84);
+    uint8_t signed86 = psbt.sign(hd86);
+    uint8_t signedInputCount = signed44 + signed49 + signed84 + signed86;
+
     message = "Signed inputs:";
-    subMessage = String(signedInputCount);
+    // Stupid hack. For some reason `psbt.sign()` returns the square of the signed input count
+    subMessage = String((int)sqrt(signedInputCount));
   } else {
     executeUnknown(commandData);
   }
