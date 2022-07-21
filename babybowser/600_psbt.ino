@@ -1,10 +1,3 @@
-// todo: revisit, required to be global?
-
-
-String serialData1;
-String password;
-String mnemonic;
-
 
 PSBT parseBase64Psbt(String psbtBase64) {
   PSBT psbt;

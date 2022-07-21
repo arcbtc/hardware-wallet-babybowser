@@ -23,14 +23,8 @@
 fs::SPIFFSFS &FlashFS = SPIFFS;
 
 
-
-String restore = ""; // todo: revisit
-
-
 SHA256 h;
 TFT_eSPI tft = TFT_eSPI();
-
-// String password = "";
 
 struct FileData {
   bool success;

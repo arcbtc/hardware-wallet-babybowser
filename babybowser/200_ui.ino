@@ -53,7 +53,6 @@ void help()
 }
 
 void printMnemonic(String mn) {
-  Serial.println("printMnemonic mn: " + mn);
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextSize(2);
